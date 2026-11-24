@@ -1,0 +1,24 @@
+{
+  "original_publisher": "MVTec Software GmbH",
+  "original_dataset": "https://www.mvtec.com/research-teaching/datasets/mvtec-ad",
+  "primary_paper": "https://openaccess.thecvf.com/content_CVPR_2019/html/Bergmann_MVTec_AD_--_A_Comprehensive_Real-World_Dataset_for_Unsupervised_Anomaly_CVPR_2019_paper.html",
+  "mirror": "https://www.kaggle.com/datasets/ipythonx/mvtec-ad",
+  "download_url": "https://api.kaggle.com/v1/datasets/download/ipythonx/mvtec-ad",
+  "archive_size_bytes": 5268895642,
+  "license": "CC BY-NC-SA 4.0",
+  "license_url": "https://creativecommons.org/licenses/by-nc-sa/4.0/",
+  "category_png_counts_including_masks": {
+    "bottle": 355,
+    "cable": 466,
+    "metal_nut": 428,
+    "tile": 431,
+    "wood": 386
+  },
+  "verification": "Selected ZIP records extracted with the ZIP CRC checks. Dataset manifest records SHA-256 for each extracted image and mask.",
+  "mirror_version": 2,
+  "verified_against": {
+    "mirror": "https://huggingface.co/datasets/foersben/mvtec-ad/tree/c75b39616f84db43677bcc8228caaafaf5096d7f",
+    "files": 2066,
+    "verification": "Local PNG bytes match Git LFS SHA-256 or Git blob SHA-1 values for every corresponding filename."
+  }
+}

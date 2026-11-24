@@ -1,0 +1,6 @@
+__pycache__/
+.venv/
+/bottle_nut_reference/
+/data/local_masks/
+/data/mvtec_ad/*/
+/project-part-a.zip
