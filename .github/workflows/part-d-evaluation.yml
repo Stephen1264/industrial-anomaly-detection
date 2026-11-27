@@ -2,7 +2,7 @@ name: Part D unified evaluation
 on:
   push:
     branches: [part-d-evaluation]
-    paths: ['part_d/**', '.github/workflows/part-d-evaluation.yml']
+    paths: ['part_d/evaluate.py', 'part_d/metrics.py', 'part_d/cases.py', 'part_d/inputs.json', 'part_d/protocol.md', 'part_d/prepare_inputs.py', '.github/workflows/part-d-evaluation.yml']
   workflow_dispatch:
 permissions:
   contents: read
@@ -14,44 +14,26 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - name: Verify published model packages
-        run: python3 part_d/prepare_inputs.py "$RUNNER_TEMP/iad-inputs" --parts B C
-      - name: Record prediction schemas, model settings and resource measurements
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install the CPU scoring environment
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
-          import os
-          import collections
-          import csv
-          import json
-          root = Path(os.environ["RUNNER_TEMP"]) / "iad-inputs"
-          for letter in ("B", "C"):
-              base = root / letter
-              print("PART", letter)
-              all_files = sorted(p for p in base.rglob("*") if p.is_file())
-              counts = collections.Counter(str(p.relative_to(base).parent) for p in all_files)
-              print("DIRECTORIES", [(k,v) for k,v in counts.items() if v > 2][:110])
-              text_files = [p for p in all_files if p.suffix.lower() in {".py", ".md", ".txt", ".json", ".jsonl", ".csv", ".yaml", ".yml"}]
-              patterns = set()
-              import re
-              for p in text_files:
-                  rel = str(p.relative_to(base))
-                  group = re.sub(r"bottle|metal_nut|cable|tile|wood|(?<=/)nut(?=/)|(?:001|005|010|0[.]01|0[.]05|0[.]10|1pct|5pct|10pct)", "CAT", rel)
-                  if group in patterns:
-                      continue
-                  patterns.add(group)
-                  print("FILE", rel, p.stat().st_size)
-                  if p.suffix.lower() in {".md",".py",".txt",".yaml",".yml"}:
-                      if p.stat().st_size < 50000:
-                          print("BEGIN",rel); print(p.read_text(encoding="utf-8-sig", errors="replace")[:22000]); print("END",rel)
-                  elif p.suffix.lower() in {".csv", ".jsonl"}:
-                      with p.open(encoding="utf-8-sig", errors="replace") as handle:
-                          for _ in range(2):
-                              print(handle.readline()[:3000].rstrip())
-                  elif p.suffix==".json":
-                      obj=json.loads(p.read_text(encoding="utf-8-sig"))
-                      if isinstance(obj,dict):
-                          brief={k:(v[:1] if isinstance(v,list) else v) for k,v in obj.items() if k not in {"samples"}}
-                          print(str(brief)[:2600])
-                      elif isinstance(obj,list): print(str(obj[:1])[:1200])
-          PY
+          python -m pip install --quiet -r part_d/requirements.txt
+          python -m pip install --quiet --index-url https://download.pytorch.org/whl/cpu torch==2.9.1
+      - name: Check the evaluator and verify A, B and C releases
+        run: |
+          python -m unittest discover -s part_d -p test_metrics.py
+          python part_d/prepare_inputs.py "$RUNNER_TEMP/iad-inputs"
+      - name: Freeze normal-validation thresholds before D test inference
+        run: python part_d/evaluate.py lock --inputs "$RUNNER_TEMP/iad-inputs" --out build/project
+      - name: Score 594 independent test images and compute exact native-grid AUROC
+        run: python -u part_d/evaluate.py test --inputs "$RUNNER_TEMP/iad-inputs" --out build/project
+      - name: Render paired cases
+        run: python part_d/cases.py --inputs "$RUNNER_TEMP/iad-inputs" --out build/project
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-d-evaluated
+          path: build/project
+          if-no-files-found: error
+          retention-days: 14
