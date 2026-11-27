@@ -1,0 +1,20 @@
+{
+  "repository": "Stephen1264/industrial-anomaly-detection",
+  "inputs": {
+    "A": {
+      "tag": "part-a-v1",
+      "filename": "project-part-a.zip",
+      "sha256": "46d2b8cd553d2d93bedd93d2a533c1b63e09d2f6c30c51c8b07c120f941c3189"
+    },
+    "B": {
+      "tag": "part-b-v1",
+      "filename": "project-part-b-v1.zip",
+      "sha256": "1208033a9308d7113a047040416dc5297a436488f7b8a521290f6ca5522a0064"
+    },
+    "C": {
+      "tag": "part-c-v1",
+      "filename": "project-part-c-v1.zip",
+      "sha256": "ee81cfa32743b26d4eebf0ec770f845c4a9bdd7b8c446a7028d6aa2eccf01de2"
+    }
+  }
+}

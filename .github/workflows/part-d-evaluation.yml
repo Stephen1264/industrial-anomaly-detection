@@ -1,0 +1,57 @@
+name: Part D unified evaluation
+on:
+  push:
+    branches: [part-d-evaluation]
+    paths: ['part_d/**', '.github/workflows/part-d-evaluation.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  evaluation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Verify published model packages
+        run: python3 part_d/prepare_inputs.py "$RUNNER_TEMP/iad-inputs" --parts B C
+      - name: Record prediction schemas, model settings and resource measurements
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          import collections
+          import csv
+          import json
+          root = Path(os.environ["RUNNER_TEMP"]) / "iad-inputs"
+          for letter in ("B", "C"):
+              base = root / letter
+              print("PART", letter)
+              all_files = sorted(p for p in base.rglob("*") if p.is_file())
+              counts = collections.Counter(str(p.relative_to(base).parent) for p in all_files)
+              print("DIRECTORIES", [(k,v) for k,v in counts.items() if v > 2][:110])
+              text_files = [p for p in all_files if p.suffix.lower() in {".py", ".md", ".txt", ".json", ".jsonl", ".csv", ".yaml", ".yml"}]
+              patterns = set()
+              import re
+              for p in text_files:
+                  rel = str(p.relative_to(base))
+                  group = re.sub(r"bottle|metal_nut|cable|tile|wood|(?<=/)nut(?=/)|(?:001|005|010|0[.]01|0[.]05|0[.]10|1pct|5pct|10pct)", "CAT", rel)
+                  if group in patterns:
+                      continue
+                  patterns.add(group)
+                  print("FILE", rel, p.stat().st_size)
+                  if p.suffix.lower() in {".md",".py",".txt",".yaml",".yml"}:
+                      if p.stat().st_size < 50000:
+                          print("BEGIN",rel); print(p.read_text(encoding="utf-8-sig", errors="replace")[:22000]); print("END",rel)
+                  elif p.suffix.lower() in {".csv", ".jsonl"}:
+                      with p.open(encoding="utf-8-sig", errors="replace") as handle:
+                          for _ in range(2):
+                              print(handle.readline()[:3000].rstrip())
+                  elif p.suffix==".json":
+                      obj=json.loads(p.read_text(encoding="utf-8-sig"))
+                      if isinstance(obj,dict):
+                          brief={k:(v[:1] if isinstance(v,list) else v) for k,v in obj.items() if k not in {"samples"}}
+                          print(str(brief)[:2600])
+                      elif isinstance(obj,list): print(str(obj[:1])[:1200])
+          PY
