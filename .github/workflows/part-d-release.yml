@@ -1,0 +1,55 @@
+name: Publish reviewed Part D release
+on:
+  push:
+    branches: [part-d-evaluation]
+    paths: ['part_d/release_v1.json']
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Check source build and artifact checksum
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(jq -r .artifact_id part_d/release_v1.json)
+          run=$(jq -r .run_id part_d/release_v1.json)
+          sha=$(jq -r .build_commit part_d/release_v1.json)
+          digest=$(jq -r .artifact_sha256 part_d/release_v1.json)
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run" |
+            jq -e --arg sha "$sha" '.conclusion == "success" and .head_sha == $sha and .head_branch == "part-d-evaluation"' >/dev/null
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" |
+            jq -e --arg digest "sha256:$digest" --argjson run "$run" '.expired == false and .digest == $digest and .workflow_run.id == $run and .name == "part-d-release-files"' >/dev/null
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: part-d-release-files
+          run-id: ${{ steps.source.outputs.run }}
+          github-token: ${{ github.token }}
+          path: deliver
+      - name: Publish the checked ZIP, report and slides
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          (cd deliver && sha256sum --check SHA256SUMS.txt)
+          actual=$(sha256sum deliver/project-part-d-v1.zip | cut -d' ' -f1)
+          expected=$(jq -r .zip_sha256 part_d/release_v1.json)
+          test "$actual" = "$expected"
+          if gh release view part-d-v1 --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "The release already exists. No published assets have been changed." >&2
+            exit 1
+          fi
+          cp part_d/RELEASE_NOTES.md "$RUNNER_TEMP/notes.md"
+          echo >> "$RUNNER_TEMP/notes.md"
+          echo "project-part-d-v1.zip SHA-256: $actual" >> "$RUNNER_TEMP/notes.md"
+          gh release create part-d-v1 deliver/project-part-d-v1.zip deliver/Final_report.pdf deliver/Final_report.docx deliver/Part_D_results.pptx deliver/SHA256SUMS.txt \
+              --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest=false \
+              --title "D V1 · 统一评测、结果分析与最终报告" --notes-file "$RUNNER_TEMP/notes.md"
+          gh release view part-d-v1 --repo "$GITHUB_REPOSITORY" --json url,isDraft,assets --jq '{url,isDraft,assets:[.assets[].name]}'
