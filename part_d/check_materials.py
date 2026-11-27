@@ -8,7 +8,7 @@ import math
 import zipfile
 from pathlib import Path
 
-import fitz
+import pymupdf as fitz
 from PIL import Image
 from pptx import Presentation
 
@@ -17,7 +17,8 @@ def checks(out, slide_pdf):
     report=fitz.open(out/"report/Final_report.pdf")
     slides=fitz.open(slide_pdf)
     deck=Presentation(out/"presentation/Part_D_results.pptx")
-    assert len(slides)==len(deck.slides)==5
+    print("GENERATED PAGE COUNTS",len(report),len(slides),len(deck.slides),flush=True)
+    assert len(slides)==len(deck.slides)==5, (len(slides),len(deck.slides))
     assert all(slide.has_notes_slide and len(slide.notes_slide.notes_text_frame.text.strip())>100 for slide in deck.slides)
     assert 7<=len(report)<=10
     for filename,pdf in (("report",report),("slides",slides)):

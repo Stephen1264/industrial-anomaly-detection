@@ -39,7 +39,7 @@ jobs:
       - name: Install report, presentation and demo dependencies
         run: |
           sudo apt-get update -qq
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pandoc libreoffice-writer libreoffice-impress fonts-liberation >/dev/null
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends libreoffice-writer libreoffice-impress fonts-liberation >/dev/null
           python -m pip install --quiet -r part_d/requirements.txt python-docx python-pptx pymupdf streamlit==1.52.2
           python -m pip install --quiet --index-url https://download.pytorch.org/whl/cpu torch==2.9.1
       - name: Recheck B's demo with D's locked thresholds and generate case detail
@@ -50,7 +50,6 @@ jobs:
         run: |
           python part_d/report.py build/project
           python part_d/presentation.py --inputs "$RUNNER_TEMP/iad-inputs" --out build/project
-          (cd build/project/presentation && pandoc slides.md --from=markdown --to=pptx --slide-level=2 -o Part_D_results.pptx)
           mkdir -p "$RUNNER_TEMP/iad-slide-render"
           libreoffice -env:UserInstallation=file://$RUNNER_TEMP/iad-lo-doc --headless --convert-to pdf --outdir build/project/report build/project/report/Final_report.docx
           libreoffice -env:UserInstallation=file://$RUNNER_TEMP/iad-lo-slides --headless --convert-to pdf --outdir "$RUNNER_TEMP/iad-slide-render" build/project/presentation/Part_D_results.pptx
