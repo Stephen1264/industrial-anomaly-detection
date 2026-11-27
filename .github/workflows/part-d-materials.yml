@@ -1,0 +1,87 @@
+name: Part D course materials
+on:
+  push:
+    branches: [part-d-evaluation]
+    paths: [part_d/report.py, part_d/presentation.py, part_d/check_materials.py, part_d/prepare_demo.py, part_d/verify_demo.py, part_d/evaluated_run.json, part_d/HANDOFF_zh.md, '.github/workflows/part-d-materials.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+jobs:
+  materials:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Verify evaluated artifact origin
+        id: origin
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          id=$(jq -r .artifact_id part_d/evaluated_run.json)
+          run=$(jq -r .run_id part_d/evaluated_run.json)
+          sha=$(jq -r .evaluation_commit part_d/evaluated_run.json)
+          digest=$(jq -r .artifact_sha256 part_d/evaluated_run.json)
+          gh api "repos/$GITHUB_REPOSITORY/actions/artifacts/$id" |
+            jq -e --arg h "$sha" --arg d "sha256:$digest" --argjson r "$run" '.expired == false and .digest == $d and .workflow_run.head_sha == $h and .workflow_run.id == $r' >/dev/null
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/download-artifact@v4
+        with:
+          name: part-d-evaluated
+          run-id: ${{ steps.origin.outputs.run }}
+          github-token: ${{ github.token }}
+          path: build/project
+      - name: Install report, presentation and demo dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends pandoc libreoffice-writer libreoffice-impress fonts-liberation >/dev/null
+          python -m pip install --quiet -r part_d/requirements.txt python-docx python-pptx pymupdf streamlit==1.52.2
+          python -m pip install --quiet --index-url https://download.pytorch.org/whl/cpu torch==2.9.1
+      - name: Recheck B's demo with D's locked thresholds and generate case detail
+        run: |
+          python part_d/prepare_inputs.py "$RUNNER_TEMP/iad-inputs"
+          python part_d/verify_demo.py --b-project "$RUNNER_TEMP/iad-inputs/B/project" --evaluation build/project
+      - name: Build course report and slides
+        run: |
+          python part_d/report.py build/project
+          python part_d/presentation.py --inputs "$RUNNER_TEMP/iad-inputs" --out build/project
+          (cd build/project/presentation && pandoc slides.md --from=markdown --to=pptx --slide-level=2 -o Part_D_results.pptx)
+          mkdir -p "$RUNNER_TEMP/iad-slide-render"
+          libreoffice -env:UserInstallation=file://$RUNNER_TEMP/iad-lo-doc --headless --convert-to pdf --outdir build/project/report build/project/report/Final_report.docx
+          libreoffice -env:UserInstallation=file://$RUNNER_TEMP/iad-lo-slides --headless --convert-to pdf --outdir "$RUNNER_TEMP/iad-slide-render" build/project/presentation/Part_D_results.pptx
+          python part_d/check_materials.py build/project "$RUNNER_TEMP/iad-slide-render/Part_D_results.pdf"
+      - name: Assemble D handoff and verify ZIP
+        run: |
+          cp -r part_d build/project/part_d
+          cp part_d/HANDOFF_zh.md build/project/README.md
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib, json, zipfile
+          root=Path("build/project")
+          files=[p for p in sorted(root.rglob("*")) if p.is_file() and "__pycache__" not in p.parts]
+          manifest={p.relative_to(root).as_posix():hashlib.sha256(p.read_bytes()).hexdigest() for p in files}
+          index=root/"SHA256SUMS.json"
+          index.write_text(json.dumps(manifest,indent=2,ensure_ascii=False)+"\n",encoding="utf-8")
+          dest=Path("deliver");dest.mkdir(exist_ok=True)
+          bundle=dest/"project-part-d-v1.zip"
+          with zipfile.ZipFile(bundle,"w",compression=zipfile.ZIP_DEFLATED,compresslevel=6) as z:
+              for p in files+[index]:z.write(p,p.relative_to(root.parent).as_posix())
+          with zipfile.ZipFile(bundle) as z: assert z.testzip() is None
+          checksum=hashlib.sha256(bundle.read_bytes()).hexdigest()
+          (dest/"SHA256SUMS.txt").write_text(checksum+"  "+bundle.name+"\n")
+          print("HANDOFF",len(files),bundle.stat().st_size,checksum)
+          PY
+          cp build/project/report/Final_report.{pdf,docx} deliver/
+          cp build/project/presentation/Part_D_results.pptx deliver/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: part-d-release-files
+          path: deliver
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 14
